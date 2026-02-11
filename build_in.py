@@ -73,16 +73,63 @@ def read_surname_count_file(path):
         out[sn] = (c, 0)
     return out
 
+def read_census_russian(base):
+    """Read surnames/Names_2010Census.csv and surnames/russian_trans_surnames.csv; return (us_dict, ru_dict)."""
+    us = {}
+    census_path = base / "surnames" / "Names_2010Census.csv"
+    if census_path.exists():
+        with open(census_path, newline="", encoding="utf-8", errors="replace") as f:
+            for row in csv.DictReader(f):
+                name = normalize(row.get("name", ""))
+                if not name or not name.endswith("in"):
+                    continue
+                try:
+                    us[name] = int(float((row.get("count") or "0").replace(",", "")))
+                except (ValueError, TypeError):
+                    us[name] = 0
+    ru = {}
+    ru_path = base / "surnames" / "russian_trans_surnames.csv"
+    if ru_path.exists():
+        with open(ru_path, newline="", encoding="utf-8", errors="replace") as f:
+            for row in csv.reader(f):
+                if len(row) < 2:
+                    continue
+                sn = normalize(row[0])
+                if not sn or not sn.endswith("in"):
+                    continue
+                try:
+                    ru[sn] = int(float((row[1] or "0").replace(",", "")))
+                except (ValueError, TypeError):
+                    ru[sn] = 0
+    return us, ru
+
 def main():
     base = Path(__file__).resolve().parent
     out_path = base / "surnames_filtered_in.json"
 
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if len(args) == 0:
+        census_path = base / "surnames" / "Names_2010Census.csv"
+        ru_path = base / "surnames" / "russian_trans_surnames.csv"
+        if census_path.exists() or ru_path.exists():
+            us, ru = read_census_russian(base)
+            all_surnames = set(us.keys()) | set(ru.keys())
+            result = []
+            for s in sorted(all_surnames, key=lambda x: (-(us.get(x, 0) + ru.get(x, 0)), x)):
+                result.append({
+                    "surname": s,
+                    "russian": ru.get(s, 0) > 0,
+                    "count_combined": us.get(s, 0),
+                    "count_russian": ru.get(s, 0),
+                })
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=0)
+            print(f"Wrote {len(result)} surnames (ending in 'in') to {out_path} (from surnames/)")
+            return
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump([], f, indent=0)
-        print("No input files. Wrote empty surnames_filtered_in.json")
-        print("Usage: python3 build_in.py <census.csv> [russian.csv]  OR  python3 build_in.py <combined.csv>")
+        print("No input files and no surnames/ folder. Wrote empty surnames_filtered_in.json")
+        print("Usage: python3 build_in.py [census.csv [russian.csv]]  OR  put CSVs in surnames/ and run with no args")
         return
 
     if len(args) == 1:
