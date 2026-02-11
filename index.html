@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Surname filter (-in endings)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 0 1rem 1rem; }
+    .wrap { display: flex; gap: 1rem; max-width: 900px; margin: 0 auto; }
+    .main { flex: 1; min-width: 0; }
+    .side { width: 200px; flex-shrink: 0; }
+    h1 { font-size: 1.25rem; margin-top: 1rem; }
+    label { display: block; margin-top: 0.75rem; }
+    input[type="text"] { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    select { padding: 0.4rem; margin-top: 0.25rem; }
+    #out { margin-top: 1rem; max-height: 70vh; overflow: auto; border: 1px solid #ccc; padding: 0.5rem; }
+    .row { padding: 0.25rem 0; display: flex; align-items: center; gap: 0.5rem; }
+    .row.fav { background: #ffc; }
+    .row.russian { color: #066; }
+    .row label { margin: 0; cursor: pointer; flex: 1; }
+    .row .hint { font-size: 0.7rem; color: #888; margin-left: 0.25rem; }
+    .side h2 { font-size: 0.95rem; margin: 0 0 0.5rem; }
+    .side-section-body { border: 1px solid #ccc; padding: 0.5rem; overflow: auto; background: #fafafa; }
+    #favourites { max-height: 50vh; }
+    #favourites .item { padding: 0.2rem 0; display: flex; align-items: center; gap: 0.4rem; }
+    #favourites .item label { flex: 1; cursor: pointer; margin: 0; }
+    #favourites:empty::after { content: 'None yet'; color: #888; font-size: 0.9rem; }
+    .side-section { margin-top: 1rem; }
+    .side-section h2 { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.35rem; }
+    .side-section h2::before { content: '▼'; font-size: 0.65rem; transition: transform 0.2s; }
+    .side-section.collapsed h2::before { transform: rotate(-90deg); }
+    .side-section.collapsed .side-section-body { display: none; }
+    #deleted { border: 1px solid #ccc; padding: 0.5rem; max-height: 40vh; overflow: auto; background: #fafafa; }
+    #deleted:empty::after { content: 'None'; color: #888; font-size: 0.9rem; }
+    #deleted .item { padding: 0.25rem 0; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+    #deleted .item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    #deleted .restore { font-size: 0.75rem; padding: 0.15rem 0.4rem; cursor: pointer; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="main">
+      <h1>Surname filter (-in endings)</h1>
+      <label>Search <input type="text" id="q" placeholder="Type to filter..."></label>
+      <label>Russian <select id="russian">
+        <option value="all">All</option>
+        <option value="yes">Russian only</option>
+        <option value="no">Not Russian</option>
+      </select></label>
+      <div id="out"></div>
+    </div>
+    <aside class="side">
+      <div class="side-section">
+        <h2>Favourites</h2>
+        <div class="side-section-body" id="favourites"></div>
+      </div>
+      <div class="side-section collapsed" id="deleted-section">
+        <h2>Deleted</h2>
+        <div class="side-section-body" id="deleted"></div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const STORAGE_KEY_FAV = 'surname-in-favourites';
+    const STORAGE_KEY_DELETED = 'surname-in-deleted';
+    let data = [];
+    let favourites = new Set(JSON.parse(localStorage.getItem(STORAGE_KEY_FAV) || '[]'));
+    let deleted = new Set(JSON.parse(localStorage.getItem(STORAGE_KEY_DELETED) || '[]'));
+
+    const qEl = document.getElementById('q');
+    const russianEl = document.getElementById('russian');
+    const outEl = document.getElementById('out');
+    const favEl = document.getElementById('favourites');
+    const deletedEl = document.getElementById('deleted');
+
+    document.querySelectorAll('.side-section h2').forEach(h => {
+      h.addEventListener('click', () => h.closest('.side-section').classList.toggle('collapsed'));
+    });
+
+    function saveFavourites() {
+      localStorage.setItem(STORAGE_KEY_FAV, JSON.stringify([...favourites]));
+    }
+    function saveDeleted() {
+      localStorage.setItem(STORAGE_KEY_DELETED, JSON.stringify([...deleted]));
+    }
+
+    function renderFavourites() {
+      const list = [...favourites].filter(s => !deleted.has(s)).sort();
+      favEl.textContent = '';
+      list.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.addEventListener('change', () => { favourites.delete(s); saveFavourites(); render(); renderFavourites(); });
+        const lab = document.createElement('label');
+        lab.textContent = s;
+        lab.prepend(cb);
+        div.appendChild(lab);
+        favEl.appendChild(div);
+      });
+    }
+
+    function renderDeleted() {
+      const list = [...deleted].sort();
+      deletedEl.textContent = '';
+      list.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const span = document.createElement('span');
+        span.textContent = s;
+        const btn = document.createElement('button');
+        btn.className = 'restore';
+        btn.type = 'button';
+        btn.textContent = 'Restore';
+        btn.addEventListener('click', () => {
+          deleted.delete(s);
+          saveDeleted();
+          render();
+          renderFavourites();
+          renderDeleted();
+        });
+        div.appendChild(span);
+        div.appendChild(btn);
+        deletedEl.appendChild(div);
+      });
+    }
+
+    function render() {
+      const q = (qEl.value || '').trim().toLowerCase();
+      const rus = russianEl.value;
+      let list = data.filter(r => !deleted.has(r.surname));
+      if (rus === 'yes') list = list.filter(r => r.russian);
+      else if (rus === 'no') list = list.filter(r => !r.russian);
+      if (q) list = list.filter(r => r.surname.toLowerCase().includes(q));
+      if (rus === 'yes') list.sort((a, b) => (b.count_russian - a.count_russian) || a.surname.localeCompare(b.surname));
+      else list.sort((a, b) => (b.count_combined - a.count_combined) || a.surname.localeCompare(b.surname));
+      outEl.textContent = '';
+      list.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'row' + (r.russian ? ' russian' : '') + (favourites.has(r.surname) ? ' fav' : '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = favourites.has(r.surname);
+        cb.addEventListener('change', () => {
+          if (cb.checked) favourites.add(r.surname);
+          else favourites.delete(r.surname);
+          saveFavourites();
+          render();
+          renderFavourites();
+        });
+        const lab = document.createElement('label');
+        lab.textContent = r.surname + (r.count_combined || r.count_russian ? ' (' + (rus === 'yes' ? r.count_russian : r.count_combined) + ')' : '');
+        lab.prepend(cb);
+        div.appendChild(lab);
+        const hint = document.createElement('span');
+        hint.className = 'hint';
+        hint.textContent = 'right-click to delete';
+        div.appendChild(hint);
+        div.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          deleted.add(r.surname);
+          favourites.delete(r.surname);
+          saveDeleted();
+          saveFavourites();
+          render();
+          renderFavourites();
+          renderDeleted();
+        });
+        outEl.appendChild(div);
+      });
+      if (list.length === 0) outEl.textContent = 'No matches.';
+    }
+
+    qEl.addEventListener('input', render);
+    russianEl.addEventListener('change', render);
+
+    fetch('surnames_filtered_in.json')
+      .then(r => r.json())
+      .then(d => {
+        data = d;
+        favourites = new Set([...favourites].filter(s => !deleted.has(s)));
+        saveFavourites();
+        render();
+        renderFavourites();
+        renderDeleted();
+      })
+      .catch(() => { outEl.textContent = 'Load surnames_filtered_in.json in this folder. Run build_in.py with your CSV/txt sources to generate it.'; });
+  </script>
+</body>
+</html>
